@@ -4,27 +4,43 @@ MentorPi Acker 底盘控制脚本集合
 
 ---
 
-## 环境启动（3 个终端）
+## 环境启动
 
-机器人 SSH 连接后依次执行：
+机器人 SSH 连接后依次执行（开 4 个终端）：
 
 ### 终端 1 — 底盘驱动
 
 ```bash
+source ~/.zshrc
 ros2 launch ros_robot_controller ros_robot_controller.launch.py
 ```
 
 ### 终端 2 — 控制器 + Odom
 
 ```bash
+source ~/.zshrc
 ros2 launch controller controller.launch.py
 ```
 
 ### 终端 3 — 相机（RealSense）
 
 ```bash
-ros2 launch realsense2_camera rs_launch.py align_depth.enable:=true depth_module.profile:=640x480x30 rgb_camera.profile:=640x480x30
+source ~/.zshrc
+ros2 launch realsense2_camera rs_launch.py align_depth.enable:=true rgb_camera.color_profile:=640x480x15
 ```
+
+### 终端 4 — YOLO 检测（仅苹果检测需要）
+
+```bash
+source ~/.zshrc
+ros2 launch yolo_distance yolo_with_distance.launch.py \
+  use_distance:=True distance_method:=region \
+  model:=/home/ubuntu/ros2_ws/yolo11n_ncnn_model \
+  imgsz_height:=320 imgsz_width:=416 device:=cpu \
+  input_image_topic:=/camera/camera/color/image_raw
+```
+
+> **裂缝检测不需要终端 4**，`crack_detect.py` 自带 YOLO 推理。
 
 ---
 
@@ -32,15 +48,23 @@ ros2 launch realsense2_camera rs_launch.py align_depth.enable:=true depth_module
 
 ### crack_detect.py — 裂缝检测 + 定位返回
 
-基于 YOLO11n 裂缝分割模型，前进检测裂缝，记录位置（odom + 时间戳补偿），返回到裂缝处。
+自带 YOLO 模型，不需要启动终端 4。
 
 ```bash
 python3 -u crack_detect.py --distance 1.5 --speed 0.2
 ```
 
+用 NCNN 模型：
+
+```bash
+python3 -u crack_detect.py \
+  --model /home/ubuntu/car_control/YOLO_26n_crack_ncnn_model \
+  --distance 1.5 --speed 0.2
+```
+
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `--model` | `YOLO_26n_crack.pt` | YOLO 权重路径 |
+| `--model` | `YOLO_26n_crack.pt` | YOLO 权重路径（.pt 或 ncnn_model 文件夹） |
 | `--distance` | 1.0 | 最大前进距离(米) |
 | `--speed` | 0.2 | 前进速度(m/s) |
 | `--slow-speed` | 0.05 | 慢速返回速度(m/s) |
@@ -48,12 +72,13 @@ python3 -u crack_detect.py --distance 1.5 --speed 0.2
 | `--tolerance` | 0.02 | 到位精度(米) |
 | `--conf` | 0.25 | 置信度阈值 |
 | `--imgsz` | 320 | 推理分辨率 |
-| `--focal-px` | 500.0 | 相机焦距(px)，需根据相机内参调整 |
+| `--focal-px` | 500.0 | 相机焦距(px) |
+| `--rgb-topic` | `/camera/camera/color/image_raw` | RGB 话题 |
+| `--depth-topic` | `/camera/camera/aligned_depth_to_color/image_raw` | 深度话题 |
 | `--no-return` | - | 检测到裂缝后不返回 |
 | `--skip-frames` | 0 | 跳帧(0=每帧检测) |
 
-输出:
-- `/crack_result` — 标注后的图像（含距离、裂缝长度、宽度）
+输出: `/crack_result` — 标注后的图像
 
 **工作流程：**
 1. 前进搜索，最大距离由 `--distance` 控制
@@ -63,6 +88,8 @@ python3 -u crack_detect.py --distance 1.5 --speed 0.2
 ---
 
 ### apple_spot_v3.py — 苹果定位返回（时间戳补偿版）
+
+需要启动终端 1-4。
 
 ```bash
 python3 -u apple_spot_v3.py --distance 1.5 --speed 0.2
@@ -76,12 +103,6 @@ python3 -u apple_spot_v3.py --distance 1.5 --speed 0.2
 | `--distance` | 1.0 | 最大前进距离(米) |
 | `--speed` | 0.2 | 前进速度(m/s) |
 | `--history-sec` | 5.0 | odom 历史保留时长(秒) |
-
-前置 YOLO 启动（终端 4）：
-
-```bash
-ros2 launch yolo_distance yolo_with_distance.launch.py use_distance:=True model:=yolo11n_ncnn_model input_topic:=/camera/camera/color/image_raw depth_topic:=/camera/camera/aligned_depth_to_color/image_raw
-```
 
 ---
 
